@@ -245,7 +245,8 @@ func (r *Runtime) Delete(index int, dryRun bool) (DeleteResult, error) {
 		return DeleteResult{}, opErr(ErrKindNotFound, "ufw 编号 %d 不存在（当前共 %d 条可列出规则）", index, len(parsed.rules))
 	}
 	if perr := r.checkDeleteSSHAllow(target); perr != nil {
-		return DeleteResult{}, opErr(ErrKindPermission, "%s", perr.Message)
+		// SSH 保护是安全护栏（用户授权问题），不是 root 缺失：保持 E_UNAUTHORIZED。
+		return DeleteResult{}, opErr(ErrKindUnauthorized, "%s", perr.Message)
 	}
 	argv := buildUfwDeleteCommand(path, index)
 	result := DeleteResult{DryRun: dryRun, Backend: BackendUFW, Command: argv, Deleted: target}

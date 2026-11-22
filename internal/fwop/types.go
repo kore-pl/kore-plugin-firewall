@@ -30,6 +30,11 @@ const (
 	ProtoAny = "any"
 )
 
+// CodeNeedRoot 是 ADR-0018 定义的机器可读错误码：需要宿主 root 但 kored 非 root。
+// 这里用本地常量而不是 pluginapi.E_NEED_ROOT：插件依赖的 pluginapi v0.1.1 尚未包含该常量
+// （kore 仓库已加，发新 module 版本是独立发布动作），协议错误码本身就是字符串。
+const CodeNeedRoot = "E_NEED_ROOT"
+
 // 安全边界常量。
 const (
 	// CapabilityAdmin 是写操作要求的能力（与 info.json 声明一致）。

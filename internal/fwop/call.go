@@ -176,8 +176,12 @@ func classify(err error) *pluginapi.Error {
 			return invalid(oe.Message)
 		case ErrKindNotFound:
 			return notFound(oe.Message)
-		case ErrKindPermission:
+		case ErrKindUnauthorized:
 			return unauthorized(oe.Message)
+		case ErrKindPermission:
+			// 权限类失败只可能来自"需要 root"（ufw/iptables 都要求 root）：
+			// 按 ADR-0018 返回 E_NEED_ROOT（HTTP 403），不再误报成 401 登录失效。
+			return needRoot(oe.Message)
 		case ErrKindUnsupported:
 			return unsupported(oe.Message)
 		case ErrKindUpstream:
@@ -195,6 +199,14 @@ func invalid(msg string) *pluginapi.Error {
 
 func unauthorized(msg string) *pluginapi.Error {
 	return &pluginapi.Error{Code: pluginapi.E_UNAUTHORIZED, Message: msg}
+}
+
+// needRoot 构造 E_NEED_ROOT + detail.hint（内核 HTTP 层把 hint 提升为顶层字段）。
+func needRoot(msg string) *pluginapi.Error {
+	detail, _ := json.Marshal(struct {
+		Hint string `json:"hint"`
+	}{Hint: rootActionHint()})
+	return &pluginapi.Error{Code: CodeNeedRoot, Message: msg, Detail: detail}
 }
 
 func notFound(msg string) *pluginapi.Error {

@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.3 (2026-11-23)
+
+- fix(protocol): `firewall.rules` / 写操作遇到 root 权限缺失时返回 `E_NEED_ROOT`（HTTP 403）+ `detail.hint`，不再误报 `E_UNAUTHORIZED`（401 会被前端读成"登录失效"）
+- test: 权限错误断言从 `E_UNAUTHORIZED` 改为 `E_NEED_ROOT`，并校验 `detail.hint` 含 kored 提权提示
+- docs: README / 前端提权指引与 ADR-0018 统一口径
+
 ## 0.2.2 (2026-11-23)
 
 - feat(protocol): `info.json` 声明 `requires_root: true` 与 5 个 `root_actions`（ufw-status / ufw-allow / ufw-deny / ufw-delete / iptables-s），argv 固定、写动作标 `irreversible`（ADR-0018）

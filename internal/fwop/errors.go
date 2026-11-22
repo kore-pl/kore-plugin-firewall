@@ -33,12 +33,13 @@ type ErrKind string
 
 // 执行面业务错误类别。
 const (
-	ErrKindInvalid     ErrKind = "invalid"
-	ErrKindNotFound    ErrKind = "notfound"
-	ErrKindPermission  ErrKind = "permission"
-	ErrKindUnsupported ErrKind = "unsupported"
-	ErrKindUpstream    ErrKind = "upstream"
-	ErrKindInternal    ErrKind = "internal"
+	ErrKindInvalid      ErrKind = "invalid"
+	ErrKindNotFound     ErrKind = "notfound"
+	ErrKindPermission   ErrKind = "permission"
+	ErrKindUnauthorized ErrKind = "unauthorized"
+	ErrKindUnsupported  ErrKind = "unsupported"
+	ErrKindUpstream     ErrKind = "upstream"
+	ErrKindInternal     ErrKind = "internal"
 )
 
 // OpError 是执行面返回的可分类业务错误。

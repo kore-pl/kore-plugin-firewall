@@ -137,13 +137,19 @@ func TestRulesInactive(t *testing.T) {
 	}
 }
 
-// TestRulesPermission 非 root 读规则返回 E_UNAUTHORIZED，并保留原始原因。
+// TestRulesPermission 非 root 读规则返回 E_NEED_ROOT（不是 401）并保留可操作 hint。
 func TestRulesPermission(t *testing.T) {
 	runner := &fakeRunner{handler: func([]string) (string, string, error) { return permissionError() }}
 	_, perr := call(t, ufwOnlyRuntime(t, runner), "firewall.rules", "{}")
-	requireCode(t, perr, pluginapi.E_UNAUTHORIZED)
+	requireCode(t, perr, CodeNeedRoot)
 	if !strings.Contains(perr.Message, "You need to be root") {
 		t.Fatalf("错误信息未保留 stderr: %q", perr.Message)
+	}
+	var detail struct {
+		Hint string `json:"hint"`
+	}
+	if err := json.Unmarshal(perr.Detail, &detail); err != nil || !strings.Contains(detail.Hint, "kored") {
+		t.Fatalf("E_NEED_ROOT 必须带 detail.hint（含 kored），实际 detail=%s err=%v", perr.Detail, err)
 	}
 }
 

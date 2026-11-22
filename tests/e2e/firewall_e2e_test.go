@@ -55,11 +55,11 @@ func TestFirewallReadOnlyE2E(t *testing.T) {
 	t.Logf("E2E_STATUS backend=%s available=%v enabled=%v default_in=%q rules_count=%d error=%q",
 		status.Backend, status.Available, status.Enabled, status.DefaultIn, status.RulesCount, status.Error)
 
-	// 2) rules：可读时校验结构一致性；非 root 时必须是 E_UNAUTHORIZED（真实错误传播）。
+	// 2) rules：可读时校验结构一致性；非 root 时必须是 E_NEED_ROOT（403 语义，不是 401）。
 	rulesResp := request(t, conn, "e2e-rules", "firewall.rules", map[string]any{"backend": "ufw"})
 	if rulesResp.Error != nil {
-		if rulesResp.Error.Code != pluginapi.E_UNAUTHORIZED {
-			t.Fatalf("rules 失败码=%s，期望 E_UNAUTHORIZED（message=%q）", rulesResp.Error.Code, rulesResp.Error.Message)
+		if rulesResp.Error.Code != fwop.CodeNeedRoot {
+			t.Fatalf("rules 失败码=%s，期望 E_NEED_ROOT（message=%q）", rulesResp.Error.Code, rulesResp.Error.Message)
 		}
 		if status.Available {
 			t.Fatalf("status 可读但 rules 被拒，行为不一致：%+v", rulesResp.Error)
