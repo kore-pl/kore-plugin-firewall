@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.2.1 (2026-11-23)
+
+- build: 位级可复现打包（stage chmod + tar --mode 归一、size_bytes 收敛），二进制改嵌 manifest.json，消除同版本 sha 漂移
+
 ## 0.2.0 (2026-11-23)
 
 - feat: firewall 从 L0 骨架升级为真实执行面——`firewall.status` 探测 ufw / iptables 后端并回读状态、默认入站策略与规则数
