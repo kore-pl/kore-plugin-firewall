@@ -1,0 +1,121 @@
+package main
+
+import (
+	"bytes"
+	"context"
+	"encoding/json"
+	"fmt"
+	"io"
+	"net"
+	"net/http"
+	"os"
+	"strings"
+	"time"
+
+	"github.com/pengtang1024/kore-plugin-firewall/internal/fwop"
+)
+
+// rootActionTimeout 是插件经内核 root-action 通道执行只读命令的上限。
+// 通道侧由动作声明的 timeout_s 兜底，这里只防 HTTP 层永久挂住。
+const rootActionTimeout = 60 * time.Second
+
+// rootActionClient 是插件→内核提权通道的客户端（ADR-0018）。
+//
+// 传输：内核 UDS 上的 HTTP（KORE_KERNEL_SOCK 由 supervisor 注入）；
+// 身份：KORE_PLUGIN_TOKEN bearer，内核只允许插件调用自己的 root_actions，
+// 且要求该插件已获 system:admin。插件自身永不 exec sudo/setuid。
+type rootActionClient struct {
+	pluginID string
+	token    string
+	client   *http.Client
+}
+
+// newRootActionClient 在三个环境变量齐备时构造客户端；缺一返回 nil（通道不可用）。
+func newRootActionClient() *rootActionClient {
+	socket := os.Getenv("KORE_KERNEL_SOCK")
+	token := os.Getenv("KORE_PLUGIN_TOKEN")
+	pluginID := os.Getenv("KORE_PLUGIN_ID")
+	if socket == "" || token == "" || pluginID == "" {
+		return nil
+	}
+	dialer := &net.Dialer{}
+	transport := &http.Transport{
+		DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
+			return dialer.DialContext(ctx, "unix", socket)
+		},
+	}
+	return &rootActionClient{
+		pluginID: pluginID, token: token,
+		client: &http.Client{Transport: transport, Timeout: rootActionTimeout},
+	}
+}
+
+// rootActionRequest / rootActionResponse / rootActionError 是通道的 JSON 契约。
+type rootActionRequest struct {
+	ActionID string   `json:"action_id"`
+	Args     []string `json:"args,omitempty"`
+}
+
+type rootActionResponse struct {
+	Executed bool   `json:"executed"`
+	ExitCode int    `json:"exit_code"`
+	Stdout   string `json:"stdout"`
+	Stderr   string `json:"stderr"`
+	DurMS    int64  `json:"dur_ms"`
+	Unit     string `json:"unit"`
+}
+
+type rootActionError struct {
+	Code    string `json:"code"`
+	Message string `json:"message"`
+	Hint    string `json:"hint"`
+}
+
+// Call 经内核执行一个声明过的 root 动作，返回 stdout 与退出码。
+func (c *rootActionClient) Call(actionID string, args []string) ([]byte, int, error) {
+	body, err := json.Marshal(rootActionRequest{ActionID: actionID, Args: args})
+	if err != nil {
+		return nil, -1, fmt.Errorf("序列化 root-action 请求失败：%w", err)
+	}
+	req, err := http.NewRequest(http.MethodPost,
+		"http://kore/api/v1/plugins/"+c.pluginID+"/root-action", bytes.NewReader(body))
+	if err != nil {
+		return nil, -1, fmt.Errorf("构造 root-action 请求失败：%w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+c.token)
+	resp, err := c.client.Do(req)
+	if err != nil {
+		return nil, -1, fmt.Errorf("调用内核 root-action 失败：%w", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	raw, err := io.ReadAll(io.LimitReader(resp.Body, 2<<20))
+	if err != nil {
+		return nil, -1, fmt.Errorf("读取 root-action 响应失败：%w", err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		var protocolErr rootActionError
+		if json.Unmarshal(raw, &protocolErr) == nil && protocolErr.Code != "" {
+			hint := ""
+			if protocolErr.Hint != "" {
+				hint = "（" + protocolErr.Hint + "）"
+			}
+			return nil, -1, fmt.Errorf("%s: %s%s", protocolErr.Code, protocolErr.Message, hint)
+		}
+		return nil, -1, fmt.Errorf("内核 root-action 返回 HTTP %d: %s", resp.StatusCode, strings.TrimSpace(string(raw)))
+	}
+	var result rootActionResponse
+	if err := json.Unmarshal(raw, &result); err != nil {
+		return nil, -1, fmt.Errorf("解析 root-action 响应失败：%w", err)
+	}
+	return []byte(result.Stdout), result.ExitCode, nil
+}
+
+// rootActionFunc 在客户端可用时返回 fwop 的调用面；nil 表示内核未启用通道。
+func rootActionFunc() fwop.RootActionFunc {
+	client := newRootActionClient()
+	if client == nil {
+		return nil
+	}
+	return client.Call
+}

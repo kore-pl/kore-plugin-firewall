@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.2.2 (2026-11-23)
+
+- feat(protocol): `info.json` 声明 `requires_root: true` 与 5 个 `root_actions`（ufw-status / ufw-allow / ufw-deny / ufw-delete / iptables-s），argv 固定、写动作标 `irreversible`（ADR-0018）
+- feat(status): 非 root 且内核注入 `KORE_KERNEL_SOCK` 时经内核 root-action 通道读取 `ufw-status` / `iptables-s`；通道不可用则 `available=false` + `error_code=E_NEED_ROOT` + 可操作 `hint`，不再只有一行英文原文
+- feat: 插件侧 root-action 客户端（UDS HTTP + `KORE_PLUGIN_TOKEN` bearer），插件自身仍不谈 root、不 exec sudo/setuid
+- test: 通道成功/不可用两条 status 路径；原有直连与降级用例保持通过
+
 ## 0.2.1 (2026-11-23)
 
 - build: 位级可复现打包（stage chmod + tar --mode 归一、size_bytes 收敛），二进制改嵌 manifest.json，消除同版本 sha 漂移

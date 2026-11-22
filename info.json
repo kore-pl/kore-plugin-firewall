@@ -1,17 +1,78 @@
 {
   "id": "firewall",
   "name": "防火墙/端口管理插件",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "protocol": "kore.plugin.v1",
   "lifecycle": "lazy",
   "depth_level": "production",
   "entry": "bin/firewall",
-  "capabilities": ["system:admin"],
+  "capabilities": [
+    "system:admin"
+  ],
   "triggers": [],
   "requires_kore": ">=0.1.0 <0.2.0",
-  "resources": {"memory_mb": 6, "cpu_quota": "15%", "pids_max": 16},
+  "resources": {
+    "memory_mb": 6,
+    "cpu_quota": "15%",
+    "pids_max": 16
+  },
   "depends_on": [],
   "conflicts": [],
-  "scenario_tags": ["sec", "ops"],
-  "size_bytes": 1472796
+  "scenario_tags": [
+    "sec",
+    "ops"
+  ],
+  "size_bytes": 2807821,
+  "requires_root": true,
+  "root_actions": [
+    {
+      "id": "ufw-status",
+      "argv": [
+        "ufw",
+        "status",
+        "verbose"
+      ],
+      "timeout_s": 10,
+      "description": "读取 ufw 状态、默认入站策略与规则数"
+    },
+    {
+      "id": "ufw-allow",
+      "argv": [
+        "ufw",
+        "allow"
+      ],
+      "timeout_s": 10,
+      "description": "放行端口（追加参数：如 22/tcp 或 proto tcp from 1.2.3.4）",
+      "irreversible": true
+    },
+    {
+      "id": "ufw-deny",
+      "argv": [
+        "ufw",
+        "deny"
+      ],
+      "timeout_s": 10,
+      "description": "拒绝端口（追加参数：如 23/tcp）",
+      "irreversible": true
+    },
+    {
+      "id": "ufw-delete",
+      "argv": [
+        "ufw",
+        "delete"
+      ],
+      "timeout_s": 10,
+      "description": "按编号删除 ufw 规则（追加参数：规则编号）",
+      "irreversible": true
+    },
+    {
+      "id": "iptables-s",
+      "argv": [
+        "iptables",
+        "-S"
+      ],
+      "timeout_s": 10,
+      "description": "读取 iptables 规则集（只读）"
+    }
+  ]
 }

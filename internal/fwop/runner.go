@@ -36,19 +36,26 @@ func (p Policy) canAdmin() bool {
 	return false
 }
 
+// RootActionFunc 是内核 root-action 通道的调用面（ADR-0018）。
+// 由 main 在 KORE_KERNEL_SOCK + KORE_PLUGIN_TOKEN 均存在时注入；nil 表示不可用。
+type RootActionFunc func(actionID string, args []string) (stdout []byte, exitCode int, err error)
+
 // Options 是 Runtime 的构造参数；Runner / Resolve 留空时使用真实实现。
 type Options struct {
 	Capabilities []string
 	SSHPorts     []int
 	Runner       Runner
 	Resolve      func(name string) (path string, ok bool)
+	// RootAction 是内核提权通道；nil 时非 root 只能走原有降级。
+	RootAction RootActionFunc
 }
 
 // Runtime 是防火墙方法的执行面：探测后端、解析规则、执行 ufw 写操作。
 type Runtime struct {
-	runner  Runner
-	resolve func(name string) (path string, ok bool)
-	policy  Policy
+	runner     Runner
+	resolve    func(name string) (path string, ok bool)
+	rootAction RootActionFunc
+	policy     Policy
 }
 
 // New 构造执行面并校验 SSH 保护端口；非法端口在启动期失败，不静默降级。
@@ -66,8 +73,9 @@ func New(opts Options) (*Runtime, error) {
 		resolve = resolveBinary
 	}
 	return &Runtime{
-		runner:  runner,
-		resolve: resolve,
+		runner:     runner,
+		resolve:    resolve,
+		rootAction: opts.RootAction,
 		policy: Policy{
 			Capabilities: append([]string(nil), opts.Capabilities...),
 			SSHPorts:     sshPorts,

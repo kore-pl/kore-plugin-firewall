@@ -2,20 +2,42 @@ package fwop
 
 import (
 	"errors"
+	"os"
 	"strconv"
 )
 
 // Status 探测首选后端并读取状态。探测失败（如非 root）不返回协议错误，
 // 而是写入 StatusResult.Error，让上层 UI 仍能展示后端与原因。
+//
+// ADR-0018：非 root 且注入了内核 root-action 通道时，status 经通道执行
+// ufw-status / iptables-s；通道也不可用时显式返回 available=false +
+// error_code=E_NEED_ROOT + hint（禁止静默失败或渲染成"无数据"）。
 func (r *Runtime) Status() (StatusResult, error) {
 	backend := r.detect()
 	status := StatusResult{Backend: backend}
+	if backend == BackendNone {
+		status.Error = "未检测到 ufw 或 iptables 后端"
+		return status, nil
+	}
+	if r.rootAction != nil && !isRoot() {
+		if err := r.statusViaRootAction(backend, &status); err != nil {
+			status.ErrorCode = "E_NEED_ROOT"
+			status.Hint = rootActionHint()
+			status.Error = "E_NEED_ROOT: 非 root，且 root-action 通道不可用：" + displayError(err)
+			return status, nil
+		}
+		return status, nil
+	}
 	switch backend {
 	case BackendUFW:
 		path, _ := r.resolve(BackendUFW)
 		output, err := r.run([]string{path, "status", "verbose"})
 		if err != nil {
 			status.Error = displayError(err)
+			if isPermissionError(err) {
+				status.ErrorCode = "E_NEED_ROOT"
+				status.Hint = rootActionHint()
+			}
 			return status, nil
 		}
 		parsed := parseUfwStatusVerbose(string(output))
@@ -28,6 +50,10 @@ func (r *Runtime) Status() (StatusResult, error) {
 		output, err := r.run([]string{path, "-S"})
 		if err != nil {
 			status.Error = displayError(err)
+			if isPermissionError(err) {
+				status.ErrorCode = "E_NEED_ROOT"
+				status.Hint = rootActionHint()
+			}
 			return status, nil
 		}
 		parsed := parseIptablesS(string(output))
@@ -35,10 +61,56 @@ func (r *Runtime) Status() (StatusResult, error) {
 		status.Enabled = true // iptables 无全局开关，规则集存在即视为生效
 		status.DefaultIn = parsed.defaultIn
 		status.RulesCount = len(parsed.rules)
-	default:
-		status.Error = "未检测到 ufw 或 iptables 后端"
 	}
 	return status, nil
+}
+
+// statusViaRootAction 经内核 root-action 通道读取状态（插件自身不获得 root）。
+func (r *Runtime) statusViaRootAction(backend string, status *StatusResult) error {
+	switch backend {
+	case BackendUFW:
+		output, exitCode, err := r.rootAction("ufw-status", nil)
+		if err != nil {
+			return err
+		}
+		if exitCode != 0 {
+			return opErr(ErrKindUpstream, "root-action ufw-status 退出码 %d", exitCode)
+		}
+		parsed := parseUfwStatusVerbose(string(output))
+		status.Available = true
+		status.Enabled = parsed.enabled
+		status.DefaultIn = parsed.defaultIn
+		status.RulesCount = parsed.count
+	case BackendIptables:
+		output, exitCode, err := r.rootAction("iptables-s", nil)
+		if err != nil {
+			return err
+		}
+		if exitCode != 0 {
+			return opErr(ErrKindUpstream, "root-action iptables-s 退出码 %d", exitCode)
+		}
+		parsed := parseIptablesS(string(output))
+		status.Available = true
+		status.Enabled = true
+		status.DefaultIn = parsed.defaultIn
+		status.RulesCount = len(parsed.rules)
+	}
+	return nil
+}
+
+// isRoot 报告插件进程是否 root。
+func isRoot() bool { return os.Geteuid() == 0 }
+
+// isPermissionError 报告命令失败是否属于权限类（决定是否给 E_NEED_ROOT）。
+func isPermissionError(err error) bool {
+	var opErrValue *OpError
+	return errors.As(err, &opErrValue) && opErrValue.Kind == ErrKindPermission
+}
+
+// rootActionHint 是"下一步怎么做"的可操作提示（ADR-0018 降级硬要求）。
+func rootActionHint() string {
+	return "需 root 权限：请用 sudo/systemd 启动 kored，或让内核经 " +
+		"POST /api/v1/plugins/firewall/root-action 执行 ufw-status / iptables-s"
 }
 
 // Rules 列出指定后端（缺省自动探测）的规则。

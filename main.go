@@ -37,7 +37,10 @@ func run(logger *slog.Logger) error {
 	if err != nil {
 		return err
 	}
-	runtime, err := fwop.New(fwop.Options{Capabilities: cfg.capabilities, SSHPorts: sshPorts})
+	rootAction := rootActionFunc()
+	runtime, err := fwop.New(fwop.Options{
+		Capabilities: cfg.capabilities, SSHPorts: sshPorts, RootAction: rootAction,
+	})
 	if err != nil {
 		return err
 	}
@@ -49,6 +52,7 @@ func run(logger *slog.Logger) error {
 	if err := handshake(conn, cfg); err != nil {
 		return err
 	}
-	logger.Info("hello 完成", "plugin_id", cfg.id, "version", cfg.version, "ssh_ports", runtime.SSHPorts())
+	logger.Info("hello 完成", "plugin_id", cfg.id, "version", cfg.version,
+		"ssh_ports", runtime.SSHPorts(), "root_action_channel", rootAction != nil)
 	return serve(conn, cfg, runtime, logger)
 }

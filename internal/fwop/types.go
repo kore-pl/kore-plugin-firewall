@@ -54,6 +54,11 @@ type StatusResult struct {
 	DefaultIn  string `json:"default_in"`
 	RulesCount int    `json:"rules_count"`
 	Error      string `json:"error"`
+	// ErrorCode 是机器可读错误码（ADR-0018：非 root 时为 E_NEED_ROOT），
+	// 仅 available=false 时出现；UI 据此禁用并展示可操作提示，不渲染成"无数据"。
+	ErrorCode string `json:"error_code,omitempty"`
+	// Hint 是"下一步怎么做"的中文提示（如提权通道的 action id）。
+	Hint string `json:"hint,omitempty"`
 }
 
 // Rule 是一条统一结构的防火墙规则。
