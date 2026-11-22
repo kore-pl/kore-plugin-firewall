@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.2.0 (2026-11-23)
+
+- feat: firewall 从 L0 骨架升级为真实执行面——`firewall.status` 探测 ufw / iptables 后端并回读状态、默认入站策略与规则数
+- feat: `firewall.rules` 真实解析 `ufw status numbered`（保留编号）与 `iptables -S` 的 INPUT 链，输出统一规则结构
+- feat: 新增 `firewall.denyPort` 与 `firewall.deleteRule`；`firewall.allowPort` / `denyPort` 以固定 argv 调用 ufw，支持 `from` 来源限定与 `comment`
+- feat: SSH 保护——deny 22 / `KORE_SSH_PORT` 一律拒绝；删除入站 SSH 放行规则拒绝；写操作要求 `system:admin`
+- feat: 写操作支持 `dry_run=true`，只返回将要执行的命令，不执行
+- feat: 命令执行统一 `LC_ALL=C`、10s 超时、无 shell，失败按权限/上游分类
+- test: 参数白名单、SSH 护栏、dry-run 不执行、ufw/iptables fixture 解析、capability 门禁
+- test: 四类故障注入改为经真实 `Runtime` 执行面注入，覆盖四个业务方法
+- test: 真实 E2E（只读 + dry-run）验证 status/rules 真实输出、前后系统 diff 为空、deny 22 被拒
+- docs: README 重写为真实后端口径，明确「启用/禁用不在方法面」与真机未执行写操作的证据边界
+- build: `dist` 增加 size_bytes 2-cycle 检测（gzip 长度对数字内容敏感时 ±1 字节往返），保证包内清单与源清单一致、重复构建与任意起点重建 sha 相同
+
 ## 0.1.0 (2026-11-22)
 
 - feat: 新建 firewall 插件骨架，复用 kore.plugin.v1 握手与会话循环

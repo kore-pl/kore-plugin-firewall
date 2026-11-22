@@ -6,18 +6,24 @@ import (
 	"github.com/pengtang1024/kore/pkg/pluginapi"
 )
 
-// noopExecutor 是骨架默认执行面：不调用防火墙二进制，只返回空结果。
-type noopExecutor struct{}
-
-func (noopExecutor) Rules(action, chain string) ([]Rule, error) { return nil, nil }
-func (noopExecutor) AllowPort(port int, protocol string) (bool, error) {
-	return false, nil
-}
-
 // decodeParams 校验 params 是 JSON 对象并反序列化到目标形状。
 func decodeParams(raw json.RawMessage, target any) *pluginapi.Error {
 	if len(raw) == 0 || string(raw) == "null" {
 		return invalid("缺少必填参数对象")
+	}
+	if raw[0] != '{' {
+		return invalid("params 必须是 JSON 对象")
+	}
+	if err := json.Unmarshal(raw, target); err != nil {
+		return invalid("params 解析失败: " + err.Error())
+	}
+	return nil
+}
+
+// decodeOptional 允许 params 缺省（firewall.status 无必填参数）。
+func decodeOptional(raw json.RawMessage, target any) *pluginapi.Error {
+	if len(raw) == 0 || string(raw) == "null" {
+		return nil
 	}
 	if raw[0] != '{' {
 		return invalid("params 必须是 JSON 对象")

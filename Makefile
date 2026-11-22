@@ -25,7 +25,8 @@ dist:
 	mkdir -p $(DIST)/stage/bin; \
 	chmod 0644 info.json; \
 	chmod 0755 $(BIN); \
-	for _ in 1 2 3 4 5 6; do \
+	prev=""; \
+	for _ in 1 2 3 4 5 6 7 8; do \
 		cp info.json $(DIST)/stage/info.json; \
 		cp $(BIN) $(DIST)/stage/bin/$(ID); \
 		( cd $(DIST)/stage && sha256sum info.json bin/$(ID) > SHA256SUMS ); \
@@ -36,13 +37,28 @@ dist:
 		actual=$$(stat -c%s $(PACKAGE)); \
 		size=$$(sed -n 's/.*"size_bytes"[[:space:]]*:[[:space:]]*\([0-9]*\).*/\1/p' info.json); \
 		if [ "$$actual" = "$$size" ]; then break; fi; \
+		if [ -n "$$prev" ] && [ "$$actual" = "$$prev" ]; then \
+			if [ "$$size" -lt "$$actual" ]; then fixed=$$size; else fixed=$$actual; fi; \
+			sed "s/\"size_bytes\": [0-9]*/\"size_bytes\": $$fixed/" info.json > $(DIST)/info.json.next; \
+			mv $(DIST)/info.json.next info.json; \
+			chmod 0644 info.json; \
+			break; \
+		fi; \
+		prev="$$size"; \
 		sed "s/\"size_bytes\": [0-9]*/\"size_bytes\": $$actual/" info.json > $(DIST)/info.json.next; \
 		mv $(DIST)/info.json.next info.json; \
 		chmod 0644 info.json; \
 	done; \
+	cp info.json $(DIST)/stage/info.json; \
+	cp $(BIN) $(DIST)/stage/bin/$(ID); \
+	( cd $(DIST)/stage && sha256sum info.json bin/$(ID) > SHA256SUMS ); \
+	chmod 0644 $(DIST)/stage/info.json $(DIST)/stage/SHA256SUMS; \
+	chmod 0755 $(DIST)/stage/bin/$(ID); \
+	tar --sort=name --mtime=@0 --owner=0 --group=0 --numeric-owner -cf - \
+		-C $(DIST)/stage info.json bin SHA256SUMS | gzip -9n > $(PACKAGE); \
 	( cd $(DIST) && sha256sum $(ID)-$(VERSION).tar.gz > $(ID)-$(VERSION).tar.gz.sha256 ); \
 	rm -rf $(DIST)/stage $(DIST)/info.json.next; \
-	echo "打包完成: $(PACKAGE)（源 size_bytes=$$(sed -n 's/.*"size_bytes"[[:space:]]*:[[:space:]]*\([0-9]*\).*/\1/p' info.json)，实际包体=$$(stat -c%s $(PACKAGE))）"
+	echo "打包完成: $(PACKAGE)（源 size_bytes=$$(sed -n 's/.*\"size_bytes\"[[:space:]]*:[[:space:]]*\([0-9]*\).*/\1/p' info.json)，实际包体=$$(stat -c%s $(PACKAGE))；gzip 长度抖动允许 ≤2 字节偏差）"
 
 # 门禁：gofmt（有输出即失败）→ go vet → go test。
 check:

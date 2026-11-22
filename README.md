@@ -1,40 +1,128 @@
 # kore-plugin-firewall
 
-防火墙/端口管理插件（**骨架**）：覆盖防火墙规则管理 / 端口放行的方法面。本仓只交付协议骨架与参数校验，**不真调用 iptables/nftables/firewalld、不内置任何工具二进制**；提案 §2.1 批3 约定「只改 `kore:` 段」（裁决 37）。
+kore 的防火墙/端口管理插件：**真实探测后端、读取规则、管理 ufw 端口规则**。
+执行面只调用固定 argv 的外部命令（`ufw` / `iptables`），不经过 shell、不读写宿主
+配置文件、不启用或禁用防火墙。写操作统一经过 SSH 保护、参数白名单与 dry-run。
 
-## 协议面
+## 协议方法（kore.plugin.v1）
 
-- `kore.plugin.v1`，`lifecycle=lazy`，`depth_level=production`
-- 能力声明：`system:admin`
-- 方法：`firewall.rules` / `firewall.allowPort`（同时接受裸 `rules` / `allowPort`）
-- 握手的 stdout 留给协议帧，日志一律写 stderr
+| 方法 | 入参 | 结果 | 写操作 |
+| --- | --- | --- | --- |
+| `kore.ping` | `{}` | `{status,uptime_s,goroutines,rss_kb}` | — |
+| `kore.reload` | `{}` | `{ok:true,config_digest:""}`（无状态，空操作） | — |
+| `kore.shutdown` | `{}` | `{ok:true}`，随后优雅退出 | — |
+| `firewall.status` | `{}` | `{backend,available,enabled,default_in,rules_count,error}` | 只读 |
+| `firewall.rules` | `{backend?}` | `{backend,rules[],count}` | 只读 |
+| `firewall.allowPort` | `{port,proto?,from?,comment?,dry_run?}` | `{applied,dry_run,backend,command,rule}` | ufw |
+| `firewall.denyPort` | `{port,proto?,from?,dry_run?}` | 同上（action=deny） | ufw |
+| `firewall.deleteRule` | `{index,dry_run?}` | `{applied,dry_run,backend,command,deleted}` | ufw |
 
-## 方法与参数（骨架口径）
+方法名同时接受 `firewall.<verb>` 与裸 `<verb>`。未知方法返回 `E_NOTFOUND`。
 
-- `firewall.rules`：`{"action":"list|add|remove","chain":"kore-input"}`（chain 可省略，缺省 `kore-input`，只含字母/数字/`-`/`_`/`:`，≤64 字符）
-- `firewall.allowPort`：`{"port":1-65535,"protocol":"tcp|udp|icmp"}`
-- 两者都返回结构化占位结果：`applied=false`（不真改宿主防火墙状态）
-- 非法参数返回 `E_INVALID`；未知方法返回 `E_NOTFOUND`
+### firewall.status
 
-## 四类故障注入
+- 后端探测优先级：`ufw` → `iptables` → `none`（固定路径优先，不依赖插件进程 PATH）。
+- `ufw` 用 `ufw status verbose`：`Status:` → `enabled`，`Default:` 的 `(incoming)` →
+  `default_in`（`allow`→`accept`、`deny`→`deny`、`reject`→`reject`），规则表格行数 →
+  `rules_count`（含 v6 条目）。
+- `iptables` 用 `iptables -S`：`-P INPUT` → `default_in`，可归一的 INPUT 规则数 →
+  `rules_count`；iptables 无全局开关，规则集存在即 `enabled=true`。
+- **探测失败不返回协议错误**：`available=false`，`error` 写明原因（例如非 root）。
+  `enabled / default_in / rules_count` 仅在 `available=true` 时可信。
+- 本插件**不提供**启用/禁用/重置防火墙的方法（避免误操作锁死 SSH）。
 
-`tests/fault/` 四个文件分别注入 kill -9、超时、磁盘满、cgroup 超限，断言方法级返回结构化错误，且 `Error.Code` 与故障类别一一对应：
+### firewall.rules
 
-| 故障 | 文件 | 期望错误码 |
-| --- | --- | --- |
-| kill -9 | `kill_test.go` | `E_UPSTREAM` |
-| 超时 | `timeout_test.go` | `E_UPSTREAM` |
-| 磁盘满 | `disk_test.go` | `E_INTERNAL` |
-| cgroup 超限 | `cgroup_test.go` | `E_UNSUPPORTED` |
+- `backend` 省略时自动探测；显式值只接受 `ufw` / `iptables`，其余 `E_INVALID`；
+  显式后端未安装返回 `E_UNSUPPORTED`。
+- `ufw`：解析 `ufw status numbered`，保留编号（删除时作为 `index`）。ufw inactive 时
+  没有编号输出，返回空列表（不报错）。
+- `iptables`：**只读 INPUT 链**。`ACCEPT/DROP/REJECT` 归一为
+  `allow/deny/reject`；跳转自定义链（如 `DOCKER-USER`）无法归一到三值动作，跳过；
+  `-j` 之外的非 TCP/UDP 协议（如 icmp）保留真实协议名，不伪装成 `any`；
+  `-i` 接口名与目的地址限定注解到 `comment` 的 `[iface=…]` / `[to=…]` 中。
+- 统一规则结构：
 
-会话测试中每个 `kore.shutdown` 请求都配对读回响应帧——`net.Pipe` 无缓冲，不读帧会导致写响应永久阻塞。
+  ```json
+  {"index":1,"action":"allow","direction":"in","proto":"tcp","port":22,
+   "from":"0.0.0.0/0","comment":"ssh"}
+  ```
 
-## 构建与验收
+  `port` 单端口输出 JSON 数字，区间/多端口（`"22:80"`、`"80,443"`）或全端口空值输出
+  字符串；`direction` 为 `in|out`（ufw 的 `FWD` 按入站侧归一，保证 SSH 护栏目不漏判）；
+  ufw 的 `LIMIT` 是限速放行，归为 `allow`；`from` 的 `Anywhere` → `0.0.0.0/0`、
+  `Anywhere (v6)` → `::/0`。
 
-```bash
-gofmt -l . && go vet ./... && go test -timeout 200s ./...
+### firewall.allowPort / denyPort（仅 ufw）
+
+- `port` 必须是 1–65535 的整数；`proto` 缺省 `tcp`，只接受 `tcp|udp`；
+  `from` 缺省 `any`，只接受 `any`、合法 IP 或 CIDR（用 `net.ParseIP/ParseCIDR` 白名单
+  校验，拒绝主机名与任何 shell 元字符）；`comment` ≤64 字符，字符白名单。
+- 固定 argv（逐项参数，无 shell）：
+
+  ```
+  ufw allow proto tcp from any to any port 18080 comment kore-web
+  ufw deny  proto udp from 10.0.0.0/8 to any port 5353
+  ```
+
+- 返回 `applied=true` 表示 ufw 命令执行成功（exit 0）；`command` 是实际执行的 argv。
+- **dry-run**：`dry_run=true` 时只做参数校验与命令构造，返回 `applied=false`、
+  `dry_run=true` 与完整 `command`，**不执行任何外部命令**（包括不读取 ufw 状态）。
+
+### firewall.deleteRule（仅 ufw）
+
+- `index` 来自 `ufw status numbered`；删除命令固定为 `ufw --force delete <index>`。
+- 删除前**先回读规则内容**：编号不存在 → `E_NOTFOUND`；目标是「入站 + allow + 覆盖
+  SSH 端口」的规则 → `E_UNAUTHORIZED`（见下）。
+- `dry_run=true` 只返回命令（仍需回读规则以完成 SSH 护栏目判断），不执行删除。
+- 只有 ufw 后端支持删除；iptables 只读。
+
+## 安全护栏
+
+| 护栏 | 行为 |
+| --- | --- |
+| deny 22 | **拒绝**：`拒绝屏蔽 SSH 端口 22：这会导致你无法再连接到服务器。如确实需要，请先确认有其他登录方式`（`E_UNAUTHORIZED`）；`dry_run` 同样被拒 |
+| `KORE_SSH_PORT` | 逗号分隔的额外 SSH 端口，始终并入 22 一起保护；非法取值**启动即失败**，不静默退回默认 |
+| 删除 SSH 放行规则 | 入站 + `allow` + 端口覆盖 SSH 端口 → `E_UNAUTHORIZED`，不执行删除；删除 `deny`/`out` 规则不受影响 |
+| 写操作能力 | 三个写方法要求 `system:admin`（插件侧纵深校验，内核另有调用前授权） |
+| 参数白名单 | 端口 1–65535、proto 仅 tcp/udp、from 仅 any/IP/CIDR、comment 字符与长度受限 |
+| 命令注入 | 固定 argv、无 shell、不拼接字符串；命令统一 `LC_ALL=C` 执行 |
+| 启用/禁用 | **不在方法面**：插件永远不启用、禁用或重置防火墙 |
+| 后端范围 | 写操作只支持 ufw；iptables 只读 INPUT 链 |
+
+被拒绝的写操作不会构造或执行任何外部命令（护栏在命令执行前完成）。
+
+## 为什么不做 enable/disable
+
+防火墙配置错误会直接锁死 SSH 会话。本插件把「启用/禁用/重置」排除在方法面之外，
+只提供端口级 allow/deny/delete；启用防火墙应由运维在带外环境人工完成。
+
+## 测试与证据边界
+
+```sh
+gofmt -l .
+go vet ./...
+go test -timeout 200s ./...
 make build && make dist
-tar -tzf dist/firewall-0.1.0.tar.gz | head -1   # info.json
 ```
 
-`dist` 使用确定性参数归档，重复构建 sha256 不变；`size_bytes` 经不动点迭代回写到源 `info.json`，与实际包体偏差 ≤10%。
+- `internal/fwop`：参数白名单、SSH 保护（deny 22 / 自定义端口 / 删除放行规则）、
+  dry-run 不执行、`ufw status verbose|numbered` 与 `iptables -S` fixture 解析、
+  capability 门禁、后端选择与错误分类。
+- `tests/fault/`：kill -9 / 超时 / 磁盘满 / cgroup 四类故障注入，覆盖 rules /
+  allowPort / denyPort / deleteRule，断言 `E_UPSTREAM` / `E_INTERNAL` /
+  `E_UNSUPPORTED` 与无故障 sanity。
+- `tests/e2e/`：真实插件二进制 + 假内核 UDS，只做**只读 + dry-run**：
+  `status` / `rules` 真实执行，`allowPort{dry_run:true}` 返回命令但不执行，
+  前后 `ufw status verbose`、`iptables -S` 与 `/etc/ufw/user*.rules` 元信息 diff 为空，
+  `denyPort{22}` 被拒。**E2E 绝不启用 ufw、绝不修改规则。**
+
+真实写路径（非 dry-run 的 allow/deny/delete）只由单元测试与 fixture 覆盖，
+本轮未在真机执行——这是刻意的安全选择，不是遗漏。
+
+## 构建与确定性
+
+`make dist` 用固定 mtime/owner 的 tar + `gzip -9n`。`size_bytes` 采用「迭代 + 2-cycle
+检测」收敛：gzip 压缩长度对数字内容敏感，可能出现 ±1 字节往返；脚本检测到往返后取
+较小值固定并重建，保证包内清单与源 `info.json` 一致，且重复构建 / 任意起点重建的
+sha256 相同（声明值与实际包体允许 ≤2 字节偏差）。

@@ -1,7 +1,8 @@
-// Package main 是 kore 的 firewall 插件：防火墙/端口管理的方法面骨架。
+// Package main 是 kore 的 firewall 插件：防火墙状态/规则读取与端口放行/拒绝管理。
 //
-// firewall 只做协议握手 + 参数校验 + 结构化结果，不真调用 iptables/nftables/
-// firewalld，也不内置任何工具二进制（裁决37 / 提案 §2.1 批3，只改 kore: 段）。
+// 真实执行面：优先探测 ufw（/usr/sbin/ufw），回退 iptables（只读）；写操作仅支持 ufw，
+// 且统一经过 SSH 保护、参数白名单与 dry-run。插件不启用/禁用防火墙、不改宿主配置文件，
+// 只调用固定 argv 的外部命令（不经过 shell）。
 //
 // 协议面（kore.plugin.v1）：UDS → kore.hello 握手 → 会话循环读 request、
 // 按 method 分发并回 response；stdout 留给协议，日志一律写 stderr。
@@ -12,6 +13,8 @@ import (
 	"log/slog"
 	"net"
 	"os"
+
+	"github.com/pengtang1024/kore-plugin-firewall/internal/fwop"
 )
 
 // main 按退出码区分失败：0 优雅退出、1 启动或协议失败。
@@ -23,9 +26,18 @@ func main() {
 	}
 }
 
-// run 依次完成建连、hello 握手与会话循环；收到 kore.shutdown 后返回 nil。
+// run 依次完成配置加载、执行面构造、建连、hello 握手与会话循环；
+// 收到 kore.shutdown 后返回 nil。
 func run(logger *slog.Logger) error {
 	cfg, err := loadConfig()
+	if err != nil {
+		return err
+	}
+	sshPorts, err := fwop.ParseSSHPorts(os.Getenv("KORE_SSH_PORT"))
+	if err != nil {
+		return err
+	}
+	runtime, err := fwop.New(fwop.Options{Capabilities: cfg.capabilities, SSHPorts: sshPorts})
 	if err != nil {
 		return err
 	}
@@ -37,6 +49,6 @@ func run(logger *slog.Logger) error {
 	if err := handshake(conn, cfg); err != nil {
 		return err
 	}
-	logger.Info("hello 完成", "plugin_id", cfg.id, "version", cfg.version)
-	return serve(conn, cfg, logger)
+	logger.Info("hello 完成", "plugin_id", cfg.id, "version", cfg.version, "ssh_ports", runtime.SSHPorts())
+	return serve(conn, cfg, runtime, logger)
 }

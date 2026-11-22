@@ -6,21 +6,65 @@ import (
 	"log/slog"
 	"net"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
+	"github.com/pengtang1024/kore-plugin-firewall/internal/fwop"
 	"github.com/pengtang1024/kore/pkg/pluginapi"
 )
+
+// testNumberedRules 是会话测试用的最小 ufw 编号输出（一条非 SSH 规则，便于删除路径）。
+const testNumberedRules = "Status: active\n[ 1] 80/tcp                     ALLOW IN    Anywhere\n"
+
+// testRunner 是主包测试的假命令执行器：不接触真实防火墙。
+type testRunner struct {
+	calls int
+}
+
+func (r *testRunner) Run(argv []string) ([]byte, []byte, error) {
+	r.calls++
+	joined := strings.Join(argv, " ")
+	switch {
+	case strings.HasSuffix(joined, "status verbose"):
+		return []byte("Status: inactive\n"), nil, nil
+	case strings.HasSuffix(joined, "status numbered"):
+		return []byte(testNumberedRules), nil, nil
+	case strings.HasSuffix(joined, "-S"):
+		return []byte("-P INPUT ACCEPT\n"), nil, nil
+	}
+	return nil, nil, nil
+}
 
 // testConfig 构造握手与会话循环共用的一致配置（不依赖环境变量）。
 func testConfig() config {
 	return config{
 		id:           "firewall",
-		version:      "0.1.0",
+		version:      "0.2.0",
 		requiresKore: ">=0.1.0 <0.2.0",
 		capabilities: []string{"system:admin"},
 		startedAt:    time.Now(),
 	}
+}
+
+// testRuntime 构造使用假执行器的插件运行期，保证测试不触碰宿主防火墙。
+func testRuntime(t *testing.T) *fwop.Runtime {
+	t.Helper()
+	runtime, err := fwop.New(fwop.Options{
+		Capabilities: []string{"system:admin"},
+		SSHPorts:     []int{22},
+		Runner:       &testRunner{},
+		Resolve: func(name string) (string, bool) {
+			if name == "ufw" || name == "iptables" {
+				return "/usr/sbin/" + name, true
+			}
+			return "", false
+		},
+	})
+	if err != nil {
+		t.Fatalf("构造执行面失败: %v", err)
+	}
+	return runtime
 }
 
 func testLogger() *slog.Logger {
@@ -91,7 +135,7 @@ func TestHandshake(t *testing.T) {
 	if params.PluginID != "firewall" || params.ID != "firewall" {
 		t.Fatalf("plugin_id/id=%q/%q，期望 firewall", params.PluginID, params.ID)
 	}
-	if params.Protocol != pluginapi.Protocol || params.Version != "0.1.0" {
+	if params.Protocol != pluginapi.Protocol || params.Version != "0.2.0" {
 		t.Fatalf("protocol/version=%q/%q 不符合 §5", params.Protocol, params.Version)
 	}
 	if params.PID != os.Getpid() {
@@ -113,7 +157,10 @@ func TestServeShutdown(t *testing.T) {
 	pluginConn, kernelConn := net.Pipe()
 	defer func() { _ = kernelConn.Close() }()
 	done := make(chan error, 1)
-	go func() { done <- serve(pluginConn, testConfig(), testLogger()); _ = pluginConn.Close() }()
+	go func() {
+		done <- serve(pluginConn, testConfig(), testRuntime(t), testLogger())
+		_ = pluginConn.Close()
+	}()
 
 	request := &pluginapi.Request{
 		Type: pluginapi.TypeRequest, ID: "id-shutdown", ReqID: "r-shutdown", Method: "kore.shutdown",
@@ -131,16 +178,20 @@ func TestServeShutdown(t *testing.T) {
 }
 
 // TestServeBusinessThenShutdown 业务请求与 shutdown 串联，每个请求都配对读一帧响应。
+// 业务请求覆盖 status / rules / 白名单 dry-run / SSH 保护拒绝。
 func TestServeBusinessThenShutdown(t *testing.T) {
 	pluginConn, kernelConn := net.Pipe()
 	defer func() { _ = kernelConn.Close() }()
 	done := make(chan error, 1)
-	go func() { done <- serve(pluginConn, testConfig(), testLogger()); _ = pluginConn.Close() }()
+	go func() {
+		done <- serve(pluginConn, testConfig(), testRuntime(t), testLogger())
+		_ = pluginConn.Close()
+	}()
 
 	requests := []*pluginapi.Request{
-		{Type: pluginapi.TypeRequest, ID: "id-rules", ReqID: "r-rules", Method: "firewall.rules", Params: json.RawMessage(`{"action":"list"}`)},
-		{Type: pluginapi.TypeRequest, ID: "id-port", ReqID: "r-port", Method: "firewall.allowPort", Params: json.RawMessage(`{"port":8080,"protocol":"tcp"}`)},
-		{Type: pluginapi.TypeRequest, ID: "id-stop", ReqID: "r-stop", Method: "kore.shutdown"},
+		{Type: pluginapi.TypeRequest, ID: "id-status", ReqID: "r-status", Method: "firewall.status"},
+		{Type: pluginapi.TypeRequest, ID: "id-rules", ReqID: "r-rules", Method: "firewall.rules", Params: json.RawMessage(`{"backend":"ufw"}`)},
+		{Type: pluginapi.TypeRequest, ID: "id-port", ReqID: "r-port", Method: "firewall.allowPort", Params: json.RawMessage(`{"port":18080,"dry_run":true}`)},
 	}
 	for _, req := range requests {
 		if err := pluginapi.WriteJSON(kernelConn, req); err != nil {
@@ -150,6 +201,26 @@ func TestServeBusinessThenShutdown(t *testing.T) {
 		if resp.Error != nil {
 			t.Fatalf("%s 响应带错误: %v", req.Method, resp.Error)
 		}
+	}
+
+	denied := &pluginapi.Request{
+		Type: pluginapi.TypeRequest, ID: "id-deny-ssh", ReqID: "r-deny-ssh",
+		Method: "firewall.denyPort", Params: json.RawMessage(`{"port":22}`),
+	}
+	if err := pluginapi.WriteJSON(kernelConn, denied); err != nil {
+		t.Fatalf("写 denyPort 请求失败: %v", err)
+	}
+	resp := readResponse(t, kernelConn, denied.ID)
+	if resp.Error == nil || resp.Error.Code != pluginapi.E_UNAUTHORIZED {
+		t.Fatalf("deny 22 应被拒: %+v", resp.Error)
+	}
+
+	stop := &pluginapi.Request{Type: pluginapi.TypeRequest, ID: "id-stop", ReqID: "r-stop", Method: "kore.shutdown"}
+	if err := pluginapi.WriteJSON(kernelConn, stop); err != nil {
+		t.Fatalf("写 shutdown 请求失败: %v", err)
+	}
+	if resp := readResponse(t, kernelConn, stop.ID); resp.Error != nil {
+		t.Fatalf("shutdown 响应带错误: %v", resp.Error)
 	}
 	if err := <-done; err != nil {
 		t.Fatalf("serve 返回错误: %v", err)

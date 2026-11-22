@@ -19,7 +19,7 @@ type statusResult struct {
 }
 
 // dispatch 把请求分发为响应帧；第二个返回值表示收到 kore.shutdown。
-func dispatch(request *pluginapi.Request, cfg config, logger *slog.Logger) (*pluginapi.Response, bool) {
+func dispatch(request *pluginapi.Request, cfg config, fw *fwop.Runtime, logger *slog.Logger) (*pluginapi.Response, bool) {
 	response := &pluginapi.Response{Type: pluginapi.TypeResponse, ID: request.ID, ReqID: request.ReqID}
 	switch request.Method {
 	case "kore.shutdown":
@@ -33,7 +33,7 @@ func dispatch(request *pluginapi.Request, cfg config, logger *slog.Logger) (*plu
 		response.Result = json.RawMessage(`{"ok":true,"config_digest":""}`)
 		return response, false
 	}
-	result, perr := fwop.Call(request.Method, request.Params, nil)
+	result, perr := fw.Call(request.Method, request.Params)
 	if perr != nil {
 		response.Error = perr
 		response.Result = nil
