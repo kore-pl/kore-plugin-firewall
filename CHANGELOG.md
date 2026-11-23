@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.2.4 (2026-11-23)
+
+- build: 依赖升级 `pluginapi v0.1.2 → v0.1.3`（编译期模块版本写入二进制）改变 dist 包体，
+  按 RELEASE §0「同 id@version 只允许一个 sha，任何改变 dist sha 的改动必须 bump」升 patch。
+  **已发布的 v0.2.3（sha `353d5626…c651b` / 2808093 B）不受影响、tag 不动**；v0.2.4 为
+  干净树可复现的新发布点，功能与 0.2.3 一致，仅依赖与包体变化
+- chore: `size_bytes` 按新包体重新收敛（`make dist` 回填）
+
 ## 0.2.3 (2026-11-23)
 
 - fix(protocol): `firewall.rules` / 写操作遇到 root 权限缺失时返回 `E_NEED_ROOT`（HTTP 403）+ `detail.hint`，不再误报 `E_UNAUTHORIZED`（401 会被前端读成"登录失效"）
