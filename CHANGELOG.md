@@ -1,6 +1,8 @@
 # Changelog
 
-## 0.2.5 (2026-11-23)
+## 0.2.6 (2026-11-23)
+
+- build: `pluginapi v0.1.3 → v0.1.4`（v0.1.4 含 ufw enable/disable 受控形状）；**0.2.5 未发 tag/release 已作废**，直接以 0.2.6 发布（require 变化必然改变 dist sha，按 RELEASE §0 必须 bump）
 
 - feat(protocol): 新增 `firewall.enable` / `firewall.disable`（参数 `{dry_run}`，返回与 allow/deny 同形的 `WriteResult`）；**走 ADR-0018 root-action 通道**，新增形状锁定的 `ufw-enable` / `ufw-disable` 两个 root_actions（argv 固定，禁止追加参数）
 - feat(protocol): `info.json` 补全量 `method_capabilities`：`firewall.status` / `firewall.rules` → `system:read`；`allowPort` / `denyPort` / `deleteRule` / `enable` / `disable` → `system:admin`

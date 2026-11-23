@@ -1,7 +1,7 @@
 {
   "id": "firewall",
   "name": "防火墙/端口管理插件",
-  "version": "0.2.5",
+  "version": "0.2.6",
   "protocol": "kore.plugin.v1",
   "lifecycle": "lazy",
   "depth_level": "production",
