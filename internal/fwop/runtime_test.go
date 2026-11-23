@@ -27,7 +27,7 @@ func ufwOnlyRuntime(t *testing.T, runner Runner) *Runtime {
 
 // TestBusinessVerb 方法名归一化：五个方法同时接受 firewall.<verb> 与裸 <verb>。
 func TestBusinessVerb(t *testing.T) {
-	verbs := []string{"status", "rules", "allowPort", "denyPort", "deleteRule"}
+	verbs := []string{"status", "rules", "allowPort", "denyPort", "deleteRule", "enable", "disable"}
 	for _, verb := range verbs {
 		if got, ok := businessVerb("firewall." + verb); !ok || got != verb {
 			t.Fatalf("businessVerb(firewall.%s)=(%q,%v)", verb, got, ok)
@@ -36,7 +36,7 @@ func TestBusinessVerb(t *testing.T) {
 			t.Fatalf("businessVerb(%s)=(%q,%v)", verb, got, ok)
 		}
 	}
-	for _, method := range []string{"firewall.exec", "firewall.enable", "firewall.disable", "status2"} {
+	for _, method := range []string{"firewall.exec", "firewall.reset", "status2"} {
 		if _, ok := businessVerb(method); ok {
 			t.Fatalf("%s 不应被接受", method)
 		}

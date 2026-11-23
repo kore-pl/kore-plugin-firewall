@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.2.5 (2026-11-23)
+
+- feat(protocol): 新增 `firewall.enable` / `firewall.disable`（参数 `{dry_run}`，返回与 allow/deny 同形的 `WriteResult`）；**走 ADR-0018 root-action 通道**，新增形状锁定的 `ufw-enable` / `ufw-disable` 两个 root_actions（argv 固定，禁止追加参数）
+- feat(protocol): `info.json` 补全量 `method_capabilities`：`firewall.status` / `firewall.rules` → `system:read`；`allowPort` / `denyPort` / `deleteRule` / `enable` / `disable` → `system:admin`
+- fix(protocol): 非 root 且通道不可用时 enable/disable 返回 `E_NEED_ROOT` + `detail.hint`（HTTP 403），不回 401
+- test: capability 声明一致性（info.json ↔ 业务动词表驱动）、enable/disable 的 dry_run / 幂等 / 非 root 回退
+- **边界（刻意不做）**：防爆破（fail2ban / sshguard）归 `kore-plugin-ssh-guard`，firewall 只做包过滤与端口规则——两处实现会产生两套状态源与互相覆盖的封禁名单。UI 上应引导用户「需要防爆破请安装 ssh-guard 插件」
+
 ## 0.2.4 (2026-11-23)
 
 - build: 依赖升级 `pluginapi v0.1.2 → v0.1.3`（编译期模块版本写入二进制）改变 dist 包体，

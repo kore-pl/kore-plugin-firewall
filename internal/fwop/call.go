@@ -26,6 +26,10 @@ func (r *Runtime) Call(method string, params json.RawMessage) (json.RawMessage, 
 		return r.callDeny(params)
 	case "deleteRule":
 		return r.callDelete(params)
+	case "enable":
+		return r.callSwitch(params, true)
+	case "disable":
+		return r.callSwitch(params, false)
 	}
 	return nil, errNotFound(method)
 }
@@ -34,7 +38,7 @@ func (r *Runtime) Call(method string, params json.RawMessage) (json.RawMessage, 
 func businessVerb(method string) (string, bool) {
 	verb := strings.TrimPrefix(method, "firewall.")
 	switch verb {
-	case "status", "rules", "allowPort", "denyPort", "deleteRule":
+	case "status", "rules", "allowPort", "denyPort", "deleteRule", "enable", "disable":
 		return verb, true
 	}
 	return "", false
@@ -227,4 +231,28 @@ func internalErr(msg string) *pluginapi.Error {
 
 func unsupported(msg string) *pluginapi.Error {
 	return &pluginapi.Error{Code: pluginapi.E_UNSUPPORTED, Message: msg}
+}
+
+// callSwitch 处理 firewall.enable / firewall.disable：admin 校验 + dry_run + 通道/root 执行。
+func (r *Runtime) callSwitch(params json.RawMessage, enable bool) (json.RawMessage, *pluginapi.Error) {
+	if perr := r.requireAdmin(); perr != nil {
+		return nil, perr
+	}
+	var p switchParams
+	if perr := decodeParams(params, &p); perr != nil {
+		return nil, perr
+	}
+	var (
+		result WriteResult
+		err    error
+	)
+	if enable {
+		result, err = r.Enable(p.DryRun)
+	} else {
+		result, err = r.Disable(p.DryRun)
+	}
+	if err != nil {
+		return nil, classify(err)
+	}
+	return encode(result)
 }

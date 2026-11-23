@@ -1,7 +1,7 @@
 {
   "id": "firewall",
   "name": "防火墙/端口管理插件",
-  "version": "0.2.4",
+  "version": "0.2.5",
   "protocol": "kore.plugin.v1",
   "lifecycle": "lazy",
   "depth_level": "production",
@@ -9,6 +9,15 @@
   "capabilities": [
     "system:admin"
   ],
+  "method_capabilities": {
+    "firewall.status": "system:read",
+    "firewall.rules": "system:read",
+    "firewall.allowPort": "system:admin",
+    "firewall.denyPort": "system:admin",
+    "firewall.deleteRule": "system:admin",
+    "firewall.enable": "system:admin",
+    "firewall.disable": "system:admin"
+  },
   "triggers": [],
   "requires_kore": ">=0.1.0 <0.2.0",
   "resources": {
@@ -73,6 +82,26 @@
       ],
       "timeout_s": 10,
       "description": "读取 iptables 规则集（只读）"
+    },
+    {
+      "id": "ufw-enable",
+      "argv": [
+        "ufw",
+        "enable"
+      ],
+      "timeout_s": 15,
+      "description": "启用 ufw 防火墙",
+      "irreversible": true
+    },
+    {
+      "id": "ufw-disable",
+      "argv": [
+        "ufw",
+        "disable"
+      ],
+      "timeout_s": 15,
+      "description": "停用 ufw 防火墙（会失去包过滤保护）",
+      "irreversible": true
     }
   ]
 }
