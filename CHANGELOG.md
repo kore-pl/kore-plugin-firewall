@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.2.7 (2026-11-24)
+
+- feat(config): 补齐 `firewall.config.get` / `firewall.config.set` 契约（PLUGIN-CONFIG §1/§2），统一配置面板出现 firewall 设置页；dispatch 命中 `<id>.config.*` 与裸 `config.*` 两种写法
+- feat(config): schema 定义三个真实能力字段——`default_backend`（auto/ufw/iptables）、`ssh_ports`（list int，始终含 22）、`dry_run_default`（bool）；不臆造 fwop 未实现的「默认入站策略」（仅只读观测）
+- feat(config): 优先级 `config.json > 环境变量 > 代码默认值`，`<KORE_STATE_DIR>/config.json` 0600 原子写（同目录临时文件 → fsync → rename → fsync 目录），损坏/非法配置启动即失败不静默回退
+- feat(config): 保存即热生效——`config.set` 校验 → 原子写 → 更新内存 → 注入执行面，下一次方法调用即用新值、PID 不变、`restart_required=false`；注入失败如实返回 `restart_required=true` + warning，不谎报 applied。kore.reload 改为真重载并返回配置摘要
+- feat(config): 新增 `internal/plugincfg`（schema/存储/sensitive 掩码/响应形状）与 `fwop.Settings/UpdateSettings`（带锁热更，SSH 护栏与 dry-run 缺省读实时值）；本仓无凭据字段，sensitive 机制保留但不臆造敏感项（G-30）
+- feat(protocol): `info.json` 的 `method_capabilities` 补 `firewall.config.get=system:read` / `firewall.config.set=system:admin`；capabilities 期望表同步
+- test(config): 契约测试覆盖 schema 合规、三字段往返与热生效（含 PID 不变）、非法值 E_INVALID 不落盘、三种 source 优先级、0600 权限、无敏感键、info 声明；go test / -race 全绿
+- build: 依赖与包体变化，按 RELEASE §0 bump patch；dist 两打 sha 一致
+
 ## 0.2.6 (2026-11-23)
 
 - build: `pluginapi v0.1.3 → v0.1.4`（v0.1.4 含 ufw enable/disable 受控形状）；**0.2.5 未发 tag/release 已作废**，直接以 0.2.6 发布（require 变化必然改变 dist sha，按 RELEASE §0 必须 bump）

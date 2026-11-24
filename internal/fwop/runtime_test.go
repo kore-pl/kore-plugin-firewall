@@ -252,7 +252,9 @@ func TestDenySSHRejected(t *testing.T) {
 	}
 
 	custom := newTestRuntime(t, runner, BackendUFW)
-	custom.policy.SSHPorts = []int{22, 2222}
+	if err := custom.UpdateSettings(Settings{SSHPorts: []int{22, 2222}, DefaultBackend: BackendAuto}); err != nil {
+		t.Fatalf("热更新 SSH 保护端口失败: %v", err)
+	}
 	_, perr := call(t, custom, "firewall.denyPort", `{"port":2222,"dry_run":true}`)
 	requireCode(t, perr, pluginapi.E_UNAUTHORIZED)
 	if !strings.Contains(perr.Message, "2222") {

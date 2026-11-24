@@ -33,16 +33,20 @@ func run(logger *slog.Logger) error {
 	if err != nil {
 		return err
 	}
-	sshPorts, err := fwop.ParseSSHPorts(os.Getenv("KORE_SSH_PORT"))
-	if err != nil {
-		return err
-	}
+	// SSH 保护端口用已按 config.json > env > default 解析好的值，
+	// 避免环境变量在文件配置存在时二次解析打架（PLUGIN-CONFIG §4）。
+	sshPorts := append([]int(nil), cfg.values.SSHPorts...)
 	rootAction := rootActionFunc()
 	runtime, err := fwop.New(fwop.Options{
 		Capabilities: cfg.capabilities, SSHPorts: sshPorts, RootAction: rootAction,
 	})
 	if err != nil {
 		return err
+	}
+	// 配置契约优先于 KORE_SSH_PORT 等环境变量（PLUGIN-CONFIG §4）；
+	// 启动失败要写明原因，不静默回退到环境变量默认值。
+	if err := cfg.applySettings(runtime); err != nil {
+		return fmt.Errorf("应用插件配置失败: %w", err)
 	}
 	conn, err := net.Dial("unix", cfg.socket)
 	if err != nil {

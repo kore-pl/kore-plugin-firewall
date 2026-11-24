@@ -63,7 +63,11 @@ func (r *Runtime) callRules(params json.RawMessage) (json.RawMessage, *pluginapi
 	if perr := decodeOptional(params, &p); perr != nil {
 		return nil, perr
 	}
-	result, err := r.Rules(p.Backend)
+	backend := p.Backend
+	if strings.TrimSpace(backend) == "" {
+		backend = r.settings.defaultBackend()
+	}
+	result, err := r.Rules(backend)
 	if err != nil {
 		return nil, classify(err)
 	}
@@ -93,7 +97,7 @@ func (r *Runtime) callAllow(params json.RawMessage) (json.RawMessage, *pluginapi
 	if perr := validateComment(p.Comment); perr != nil {
 		return nil, perr
 	}
-	result, err := r.Allow(p.Port, proto, from, strings.TrimSpace(p.Comment), p.DryRun)
+	result, err := r.Allow(p.Port, proto, from, strings.TrimSpace(p.Comment), r.effectiveDryRun(p.DryRun))
 	if err != nil {
 		return nil, classify(err)
 	}
@@ -123,7 +127,7 @@ func (r *Runtime) callDeny(params json.RawMessage) (json.RawMessage, *pluginapi.
 	if perr != nil {
 		return nil, perr
 	}
-	result, err := r.Deny(p.Port, proto, from, p.DryRun)
+	result, err := r.Deny(p.Port, proto, from, r.effectiveDryRun(p.DryRun))
 	if err != nil {
 		return nil, classify(err)
 	}
@@ -142,11 +146,20 @@ func (r *Runtime) callDelete(params json.RawMessage) (json.RawMessage, *pluginap
 	if p.Index < 1 {
 		return nil, invalid("index 必须是 ufw 编号（≥1）")
 	}
-	result, err := r.Delete(p.Index, p.DryRun)
+	result, err := r.Delete(p.Index, r.effectiveDryRun(p.DryRun))
 	if err != nil {
 		return nil, classify(err)
 	}
 	return encode(result)
+}
+
+// effectiveDryRun 求写操作的最终 dry_run：请求显式指定优先，
+// 未指定时取配置面板的 dry_run_default（热生效，无需重启）。
+func (r *Runtime) effectiveDryRun(explicit *bool) bool {
+	if explicit != nil {
+		return *explicit
+	}
+	return r.settings.dryRunDefault()
 }
 
 // requireAdmin 校验插件自身声明的 system:admin 能力；缺失时写操作一律拒绝。
@@ -246,10 +259,11 @@ func (r *Runtime) callSwitch(params json.RawMessage, enable bool) (json.RawMessa
 		result WriteResult
 		err    error
 	)
+	dryRun := r.effectiveDryRun(p.DryRun)
 	if enable {
-		result, err = r.Enable(p.DryRun)
+		result, err = r.Enable(dryRun)
 	} else {
-		result, err = r.Disable(p.DryRun)
+		result, err = r.Disable(dryRun)
 	}
 	if err != nil {
 		return nil, classify(err)

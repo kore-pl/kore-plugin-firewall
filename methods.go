@@ -19,7 +19,7 @@ type statusResult struct {
 }
 
 // dispatch 把请求分发为响应帧；第二个返回值表示收到 kore.shutdown。
-func dispatch(request *pluginapi.Request, cfg config, fw *fwop.Runtime, logger *slog.Logger) (*pluginapi.Response, bool) {
+func dispatch(request *pluginapi.Request, cfg *config, fw *fwop.Runtime, logger *slog.Logger) (*pluginapi.Response, bool) {
 	response := &pluginapi.Response{Type: pluginapi.TypeResponse, ID: request.ID, ReqID: request.ReqID}
 	switch request.Method {
 	case "kore.shutdown":
@@ -30,7 +30,32 @@ func dispatch(request *pluginapi.Request, cfg config, fw *fwop.Runtime, logger *
 		response.Result = pingResult(cfg)
 		return response, false
 	case "kore.reload":
-		response.Result = json.RawMessage(`{"ok":true,"config_digest":""}`)
+		// 重载配置并热注入执行面；digest 由当前配置值计算，不再返回空串。
+		result, perr := cfg.reload(fw)
+		if perr != nil {
+			response.Error = perr
+			response.Result = nil
+			return response, false
+		}
+		response.Result = result
+		return response, false
+	case cfg.id + ".config.get", "config.get":
+		result, perr := configGet(cfg)
+		if perr != nil {
+			response.Error = perr
+			response.Result = nil
+			return response, false
+		}
+		response.Result = result
+		return response, false
+	case cfg.id + ".config.set", "config.set":
+		result, perr := configSet(request.Params, cfg, fw)
+		if perr != nil {
+			response.Error = perr
+			response.Result = nil
+			return response, false
+		}
+		response.Result = result
 		return response, false
 	}
 	result, perr := fw.Call(request.Method, request.Params)
@@ -44,7 +69,7 @@ func dispatch(request *pluginapi.Request, cfg config, fw *fwop.Runtime, logger *
 }
 
 // pingResult 组装 kore.ping 结果。
-func pingResult(cfg config) json.RawMessage {
+func pingResult(cfg *config) json.RawMessage {
 	data, _ := json.Marshal(statusResult{
 		Status:     "ready",
 		UptimeS:    int64(time.Since(cfg.startedAt).Seconds()),

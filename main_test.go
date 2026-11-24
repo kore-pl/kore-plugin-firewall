@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/pengtang1024/kore-plugin-firewall/internal/fwop"
+	"github.com/pengtang1024/kore-plugin-firewall/internal/plugincfg"
 	"github.com/pengtang1024/kore/pkg/pluginapi"
 )
 
@@ -37,13 +38,15 @@ func (r *testRunner) Run(argv []string) ([]byte, []byte, error) {
 }
 
 // testConfig 构造握手与会话循环共用的一致配置（不依赖环境变量）。
-func testConfig() config {
-	return config{
+func testConfig() *config {
+	return &config{
 		id:           "firewall",
 		version:      "0.2.0",
 		requiresKore: ">=0.1.0 <0.2.0",
 		capabilities: []string{"system:admin"},
 		startedAt:    time.Now(),
+		values:       defaultValues(),
+		source:       plugincfg.SourceDefault,
 	}
 }
 

@@ -127,7 +127,7 @@ func dedupePorts(ports []int) []int {
 // checkDenySSHPort 是 denyPort 的 SSH 保护：目标是 22 或任一配置的 SSH 端口即拒绝。
 // 在构造命令与执行之前完成，dry_run 同样被拒。
 func (r *Runtime) checkDenySSHPort(port int) *pluginapi.Error {
-	for _, sshPort := range r.policy.SSHPorts {
+	for _, sshPort := range r.settings.sshPorts() {
 		if port != sshPort {
 			continue
 		}
@@ -145,7 +145,7 @@ func (r *Runtime) checkDeleteSSHAllow(rule Rule) *pluginapi.Error {
 	if rule.Action != ActionAllow || rule.Direction != DirectionIn {
 		return nil
 	}
-	for _, sshPort := range r.policy.SSHPorts {
+	for _, sshPort := range r.settings.sshPorts() {
 		if !rule.Port.Covers(sshPort) {
 			continue
 		}

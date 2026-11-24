@@ -130,19 +130,19 @@ type (
 		Proto   string `json:"proto,omitempty"`
 		From    string `json:"from,omitempty"`
 		Comment string `json:"comment,omitempty"`
-		DryRun  bool   `json:"dry_run,omitempty"`
+		DryRun  *bool  `json:"dry_run,omitempty"`
 	}
 
 	denyPortParams struct {
 		Port   int    `json:"port"`
 		Proto  string `json:"proto,omitempty"`
 		From   string `json:"from,omitempty"`
-		DryRun bool   `json:"dry_run,omitempty"`
+		DryRun *bool  `json:"dry_run,omitempty"`
 	}
 
 	deleteRuleParams struct {
-		Index  int  `json:"index"`
-		DryRun bool `json:"dry_run,omitempty"`
+		Index  int   `json:"index"`
+		DryRun *bool `json:"dry_run,omitempty"`
 	}
 )
 

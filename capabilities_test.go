@@ -27,6 +27,8 @@ func TestMethodCapabilitiesCoverBusinessVerbs(t *testing.T) {
 		"firewall.deleteRule": "system:admin",
 		"firewall.enable":     "system:admin",
 		"firewall.disable":    "system:admin",
+		"firewall.config.get": "system:read",
+		"firewall.config.set": "system:admin",
 	}
 	if len(info.MethodCapabilities) != len(want) {
 		t.Fatalf("method_capabilities 条数=%d，期望 %d：%v", len(info.MethodCapabilities), len(want), info.MethodCapabilities)

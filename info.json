@@ -1,7 +1,7 @@
 {
   "id": "firewall",
   "name": "防火墙/端口管理插件",
-  "version": "0.2.6",
+  "version": "0.2.7",
   "protocol": "kore.plugin.v1",
   "lifecycle": "lazy",
   "depth_level": "production",
@@ -16,7 +16,9 @@
     "firewall.denyPort": "system:admin",
     "firewall.deleteRule": "system:admin",
     "firewall.enable": "system:admin",
-    "firewall.disable": "system:admin"
+    "firewall.disable": "system:admin",
+    "firewall.config.get": "system:read",
+    "firewall.config.set": "system:admin"
   },
   "triggers": [],
   "requires_kore": ">=0.1.0 <0.2.0",
@@ -31,7 +33,7 @@
     "sec",
     "ops"
   ],
-  "size_bytes": 2833896,
+  "size_bytes": 2859552,
   "requires_root": true,
   "root_actions": [
     {

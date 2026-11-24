@@ -56,6 +56,7 @@ type Runtime struct {
 	resolve    func(name string) (path string, ok bool)
 	rootAction RootActionFunc
 	policy     Policy
+	settings   settingsState
 }
 
 // New 构造执行面并校验 SSH 保护端口；非法端口在启动期失败，不静默降级。
@@ -72,7 +73,7 @@ func New(opts Options) (*Runtime, error) {
 	if resolve == nil {
 		resolve = resolveBinary
 	}
-	return &Runtime{
+	runtime := &Runtime{
 		runner:     runner,
 		resolve:    resolve,
 		rootAction: opts.RootAction,
@@ -80,12 +81,30 @@ func New(opts Options) (*Runtime, error) {
 			Capabilities: append([]string(nil), opts.Capabilities...),
 			SSHPorts:     sshPorts,
 		},
-	}, nil
+	}
+	// settings 以构造时的 SSH 端口为基线；config.json 的可热更值由 main 在
+	// loadConfig 之后经 UpdateSettings 一次注入（见 config.go 的 applySettings）。
+	initial := DefaultSettings()
+	initial.SSHPorts = sshPorts
+	if _, err := runtime.settings.update(initial); err != nil {
+		return nil, err
+	}
+	return runtime, nil
 }
 
 // SSHPorts 返回受保护的 SSH 端口集合（只读副本）。
 func (r *Runtime) SSHPorts() []int {
 	return append([]int(nil), r.policy.SSHPorts...)
+}
+
+// Settings 返回当前生效的可热更设置（只读副本）。
+func (r *Runtime) Settings() Settings { return r.settings.snapshot() }
+
+// UpdateSettings 校验并热替换设置：成功时下一次方法调用即使用新值，无需重启。
+// 校验失败时保持旧设置不变（config.set 的「校验 → 原子写 → 更新内存」顺序由调用方保证）。
+func (r *Runtime) UpdateSettings(next Settings) error {
+	_, err := r.settings.update(next)
+	return err
 }
 
 // execRunner 是本机真实命令执行器：固定 argv、无 shell、C locale、带超时。

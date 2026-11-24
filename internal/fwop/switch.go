@@ -15,8 +15,8 @@ import (
 
 // switchParams 是 firewall.enable / firewall.disable 的入参（对外 schema 显式定形）。
 type switchParams struct {
-	// DryRun 为 true 时只返回将执行的命令，不执行。
-	DryRun bool `json:"dry_run,omitempty"`
+	// DryRun 非 nil 时覆盖配置里的 dry_run 默认值；true 表示只返回命令不执行。
+	DryRun *bool `json:"dry_run,omitempty"`
 }
 
 // Enable 启用 ufw（firewall.enable）。
