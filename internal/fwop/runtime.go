@@ -109,8 +109,9 @@ func isPermissionError(err error) bool {
 
 // rootActionHint 是"下一步怎么做"的可操作提示（ADR-0018 降级硬要求）。
 func rootActionHint() string {
-	return "需 root 权限：请用 sudo/systemd 启动 kored，或让内核经 " +
-		"POST /api/v1/plugins/firewall/root-action 执行 ufw-status / iptables-s"
+	return "需 root 权限：请以 root 运行 kored（systemd 单元 User=root 或 sudo kored serve），" +
+		"之后插件经内核 root-action 通道（POST /api/v1/plugins/firewall/root-action）执行 ufw/iptables/nft 动作；" +
+		"当前进程非 root 时插件与内核都无法改宿主防火墙，写操作一律拒绝"
 }
 
 // Rules 列出指定后端（缺省自动探测）的规则。

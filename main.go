@@ -39,6 +39,7 @@ func run(logger *slog.Logger) error {
 	rootAction := rootActionFunc()
 	runtime, err := fwop.New(fwop.Options{
 		Capabilities: cfg.capabilities, SSHPorts: sshPorts, RootAction: rootAction,
+		StateDir: cfg.stateDir,
 	})
 	if err != nil {
 		return err

@@ -30,6 +30,18 @@ func (r *Runtime) Call(method string, params json.RawMessage) (json.RawMessage, 
 		return r.callSwitch(params, true)
 	case "disable":
 		return r.callSwitch(params, false)
+	case "ipList":
+		return r.callIPList(params)
+	case "ipAllow":
+		return r.callIPWrite(params, IPModeAllow)
+	case "ipDeny":
+		return r.callIPWrite(params, IPModeDeny)
+	case "ipRemove":
+		return r.callIPRemove(params)
+	case "recordFail":
+		return r.callRecordFail(params)
+	case "bruteSet":
+		return r.callBruteSet(params)
 	}
 	return nil, errNotFound(method)
 }
@@ -38,7 +50,8 @@ func (r *Runtime) Call(method string, params json.RawMessage) (json.RawMessage, 
 func businessVerb(method string) (string, bool) {
 	verb := strings.TrimPrefix(method, "firewall.")
 	switch verb {
-	case "status", "rules", "allowPort", "denyPort", "deleteRule", "enable", "disable":
+	case "status", "rules", "allowPort", "denyPort", "deleteRule", "enable", "disable",
+		"ipList", "ipAllow", "ipDeny", "ipRemove", "recordFail", "bruteSet":
 		return verb, true
 	}
 	return "", false
@@ -265,6 +278,91 @@ func (r *Runtime) callSwitch(params json.RawMessage, enable bool) (json.RawMessa
 	} else {
 		result, err = r.Disable(dryRun)
 	}
+	if err != nil {
+		return nil, classify(err)
+	}
+	return encode(result)
+}
+
+// callIPList 处理 firewall.ipList：只读返回规则与防爆破配置。
+func (r *Runtime) callIPList(params json.RawMessage) (json.RawMessage, *pluginapi.Error) {
+	var p ipListParams
+	if perr := decodeOptional(params, &p); perr != nil {
+		return nil, perr
+	}
+	result, err := r.listIP()
+	if err != nil {
+		return nil, classify(err)
+	}
+	return encode(result)
+}
+
+// callIPWrite 处理 firewall.ipAllow / firewall.ipDeny：admin 校验 + dry-run + root-action。
+func (r *Runtime) callIPWrite(params json.RawMessage, mode IPMode) (json.RawMessage, *pluginapi.Error) {
+	if perr := r.requireAdmin(); perr != nil {
+		return nil, perr
+	}
+	var p ipAddParams
+	if perr := decodeParams(params, &p); perr != nil {
+		return nil, perr
+	}
+	// 方法名即 mode：入参若显式给了 mode，必须与方法名一致（防混淆）。
+	if strings.TrimSpace(p.Mode) != "" && p.Mode != string(mode) {
+		return nil, invalid("mode 与方法名不一致：" + p.Mode + "，" + string(mode))
+	}
+	p.Mode = string(mode)
+	result, err := r.addIP(p)
+	if err != nil {
+		return nil, classify(err)
+	}
+	return encode(result)
+}
+
+// callIPRemove 处理 firewall.ipRemove：按 id 删除规则（root-action 下发，状态落盘）。
+func (r *Runtime) callIPRemove(params json.RawMessage) (json.RawMessage, *pluginapi.Error) {
+	if perr := r.requireAdmin(); perr != nil {
+		return nil, perr
+	}
+	var p ipRemoveParams
+	if perr := decodeParams(params, &p); perr != nil {
+		return nil, perr
+	}
+	if strings.TrimSpace(p.ID) == "" {
+		return nil, invalid("id 必填：请传入要删除规则的编号")
+	}
+	result, err := r.removeIP(p)
+	if err != nil {
+		return nil, classify(err)
+	}
+	return encode(result)
+}
+
+// callRecordFail 处理 firewall.recordFail：记录一次登录失败（供管理员会话/未来 hook 调用）。
+func (r *Runtime) callRecordFail(params json.RawMessage) (json.RawMessage, *pluginapi.Error) {
+	if perr := r.requireAdmin(); perr != nil {
+		return nil, perr
+	}
+	var p ipFailParams
+	if perr := decodeParams(params, &p); perr != nil {
+		return nil, perr
+	}
+	result, err := r.recordFail(p)
+	if err != nil {
+		return nil, classify(err)
+	}
+	return encode(result)
+}
+
+// callBruteSet 处理 firewall.bruteSet：开关/阈值/封禁时长热更新（admin 校验）。
+func (r *Runtime) callBruteSet(params json.RawMessage) (json.RawMessage, *pluginapi.Error) {
+	if perr := r.requireAdmin(); perr != nil {
+		return nil, perr
+	}
+	var p bruteSetParams
+	if perr := decodeParams(params, &p); perr != nil {
+		return nil, perr
+	}
+	result, err := r.setBrute(p)
 	if err != nil {
 		return nil, classify(err)
 	}

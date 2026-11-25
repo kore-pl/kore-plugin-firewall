@@ -48,6 +48,8 @@ type Options struct {
 	Resolve      func(name string) (path string, ok bool)
 	// RootAction 是内核提权通道；nil 时非 root 只能走原有降级。
 	RootAction RootActionFunc
+	// StateDir 是插件状态目录，IP 名单持久化到 <StateDir>/iplist.json（0600）。
+	StateDir string
 }
 
 // Runtime 是防火墙方法的执行面：探测后端、解析规则、执行 ufw 写操作。
@@ -57,6 +59,8 @@ type Runtime struct {
 	rootAction RootActionFunc
 	policy     Policy
 	settings   settingsState
+	// iplist 是 IP 白名单/黑名单/防爆破的插件状态（KORE_STATE_DIR 下原子持久化）。
+	iplist *iplistStore
 }
 
 // New 构造执行面并校验 SSH 保护端口；非法端口在启动期失败，不静默降级。
@@ -77,6 +81,7 @@ func New(opts Options) (*Runtime, error) {
 		runner:     runner,
 		resolve:    resolve,
 		rootAction: opts.RootAction,
+		iplist:     newIPListStore(opts.StateDir),
 		policy: Policy{
 			Capabilities: append([]string(nil), opts.Capabilities...),
 			SSHPorts:     sshPorts,

@@ -16,6 +16,12 @@ kore 的防火墙/端口管理插件：**真实探测后端、读取规则、管
 | `firewall.allowPort` | `{port,proto?,from?,comment?,dry_run?}` | `{applied,dry_run,backend,command,rule}` | ufw |
 | `firewall.denyPort` | `{port,proto?,from?,dry_run?}` | 同上（action=deny） | ufw |
 | `firewall.deleteRule` | `{index,dry_run?}` | `{applied,dry_run,backend,command,deleted}` | ufw |
+| `firewall.ipList` | `{}` | `{rules[],count,brute,backend,error?}` | 只读 |
+| `firewall.ipAllow` | `{mode,ip,comment?,dry_run?}` | `{applied,dry_run,command,rule}` | nft root-action |
+| `firewall.ipDeny` | 同上 | 同上（黑名单） | nft root-action |
+| `firewall.ipRemove` | `{id,dry_run?}` | 同上 | nft root-action |
+| `firewall.recordFail` | `{ip}` | `{ip,failures,banned,ban_until?,threshold}` | nft root-action（达阈值时） |
+| `firewall.bruteSet` | `{enabled?,threshold?,ban_min?}` | `{enabled,threshold,ban_min}` | 配置（落盘） |
 
 方法名同时接受 `firewall.<verb>` 与裸 `<verb>`。未知方法返回 `E_NOTFOUND`。
 
@@ -76,6 +82,26 @@ kore 的防火墙/端口管理插件：**真实探测后端、读取规则、管
   SSH 端口」的规则 → `E_UNAUTHORIZED`（见下）。
 - `dry_run=true` 只返回命令（仍需回读规则以完成 SSH 护栏目判断），不执行删除。
 - 只有 ufw 后端支持删除；iptables 只读。
+
+### `firewall.ipList / ipAllow / ipDeny / ipRemove`（IP 白/黑名单）
+
+- 白名单（allow）优先放行、黑名单（deny）丢弃：数据面为 kore 自有 nft 表 `kore_fw`，集合 `allow4` / `deny4`，base chain `input` 的链规则为「白名单 accept → 黑名单/封禁 drop」（chain `policy accept`，只丢命中规则的包）。
+- `ip` 只接受 IPv4 地址或 CIDR（`net.ParseIP/ParseCIDR` 校验，拒绝主机名与注入字符）；CIDR 会归一化成网络地址（`10.1.2.3/8` → `10.0.0.0/8`）后再落库与下发。`comment` ≤64 字符，与端口规则同一白名单。
+- 写操作走 ADR-0018 内核 root-action 通道（6 条 nft 动作，`root_actions` 共 13 条，未超内核协议上限 16 条）：建表 + 建两个集合 + base chain + 两条链规则压进单个 `nft-init`（6 条语句，nft argv 用空格拼行 + 独立 `;` 分句，内核按语句级形状表逐句校验）。插件自身不提权、不直接改宿主防火墙。
+- 非 root 且内核 root-action 通道不可用时 `E_NEED_ROOT`（HTTP 403）+ `hint`（fail-closed，绝不静默成功）；`dry_run=true` 只返回命令、不下发。
+- 规则落 `<KORE_STATE_DIR>/iplist.json`（0600 原子写），`ipList` 回读含规则、防爆破配置与后端探测结果。
+- **表是运行态**：nft 表不跨宿主重启持久化。插件进程内首次写操作会先探活（`nft-list`），表缺失则重建并把 `iplist.json` 里的规则回灌（过期封禁跳过），避免「界面有、宿主没有」。
+
+### `firewall.bruteSet / recordFail`（防爆破）
+
+- `bruteSet` 配置 `enabled` / `threshold`（1–1000，默认 5）/ `ban_min`（1–1440 分钟，默认 10），落盘并热生效，无 ticker。
+- `recordFail{ip}` 记一次登录失败（10 分钟滑动窗口）；达到阈值时自动下发一条带 `timeout` 的元素到 nft 集合 `deny4`（黑名单与临时封禁共用同一集合），到期由内核超时自动移除、插件零 ticker；已封禁 IP 重复调用不重复封禁，封禁后失败计数清零。
+- 审计接口的 `Detail.ip` 已脱敏，**不能**当封禁数据源；调用方需传精确来源 IP。当前闭环为「管理员录入 + UI 配置」，未来内核登录失败 hook 可在不插件侧改接口的前提下接入。
+
+### 已知边界（0.3.0）
+
+- **只支持 IPv4**（地址与 CIDR）：内核协议的 `root_actions` 上限是 16 条，ufw/iptables 已占 7 条，再为 allow6/deny6 各立「建集合 + 增 + 删」动作会超限。IPv6 地址/网段传入时返回 `E_UNSUPPORTED` 并提示改用 ufw 规则（`ufw allow from 2001:db8::1`），不会静默塞进 IPv4 集合。
+- **真实下发需要 root**：非 root 的 kored 只能 dry-run + `E_NEED_ROOT`；本仓 CI/开发机（非 root）不验证真实 nft 写入，证据边界见下文。
 
 ## 安全护栏
 

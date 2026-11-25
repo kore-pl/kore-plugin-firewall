@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.3.0 (2026-11-25)
+
+- feat(iplist): 补竞品清单条目 5——IP 白名单/黑名单与防爆破。新增 6 个方法：`ipList` / `ipAllow` / `ipDeny` / `ipRemove` / `recordFail` / `bruteSet`；规则区分 allow/deny/ban，支持 IPv4 地址与 CIDR（CIDR 归一化为网络地址），白名单优先放行避免误封
+- fix(root-action): `root_actions` 从 28 条收敛到 13 条（内核协议上限 16 条，原方案会导致 `store/install` 校验失败、包根本装不上）；建表 + 两个集合 + base chain + 两条链规则压进单个 `nft-init`（6 条语句、独立 `;` 分句，符合内核 nft 语句级形状表），元素增删按集合各一条动作
+- fix(iplist): nft 动作幂等性——`nft add` 对已存在对象返回非零，改为「先 `nft-list` 探活、缺失才 `nft-init`」，进程内缓存结果；表被重建时按 `iplist.json` 回灌规则（过期封禁跳过），删除元素失败且属宿主侧缺失时只清 kore 记录并如实回 `applied=false + note`
+- fix(iplist): IPv6 明确返回 `E_UNSUPPORTED` + 可操作提示（改走 ufw），不再有「声明了 allow6/deny6 却无对应 root 动作」的半成品状态
+- feat(iplist): 防爆破阈值可配（默认登录失败 5 次封禁 10 分钟，1–1000 次 / 1–1440 分钟）；`recordFail` 达阈值自动下发带 timeout 的临时封禁，nft 集合元素自动过期，插件零 ticker；失败计数 10 分钟窗口、封禁后清零
+- feat(root-action): 新增 6 条形状锁定 nft root_actions（kore 自有表 kore_fw + allow4/deny4 集合 + input base chain + 元素增删）；root 动作经 ADR-0018 内核代理，插件不提权、不碰宿主防火墙真实规则
+- feat(degrade): 非 root 且无内核 root-action 通道时 IP 写操作 fail-closed 返回 `E_NEED_ROOT` + 可操作 hint（与 status/rules 口径一致），dry-run 不触碰通道
+- feat(state): 规则与防爆破配置落 `<KORE_STATE_DIR>/iplist.json`（0600 原子写，与 config.json 同口径）；不引入新依赖，只用标准库 + pluginapi
+- docs: README 方法表 / 安全护栏同步；`info.json` method_capabilities 全量声明（15 条）
+- test: iplist 写入/回读/删除、防爆破达阈值自动封禁、参数白名单、CIDR 归一化、IPv6 拒收、探活后不重复初始化、dry-run 零通道、无通道降级；root_actions 的 SDK schema + 追加参数形状 + 「≤16 条」协议上限守护；go test / -race 全绿
+
 ## 0.2.7 (2026-11-24)
 
 - feat(config): 补齐 `firewall.config.get` / `firewall.config.set` 契约（PLUGIN-CONFIG §1/§2），统一配置面板出现 firewall 设置页；dispatch 命中 `<id>.config.*` 与裸 `config.*` 两种写法
@@ -19,7 +32,7 @@
 - feat(protocol): `info.json` 补全量 `method_capabilities`：`firewall.status` / `firewall.rules` → `system:read`；`allowPort` / `denyPort` / `deleteRule` / `enable` / `disable` → `system:admin`
 - fix(protocol): 非 root 且通道不可用时 enable/disable 返回 `E_NEED_ROOT` + `detail.hint`（HTTP 403），不回 401
 - test: capability 声明一致性（info.json ↔ 业务动词表驱动）、enable/disable 的 dry_run / 幂等 / 非 root 回退
-- **边界（刻意不做）**：防爆破（fail2ban / sshguard）归 `kore-plugin-ssh-guard`，firewall 只做包过滤与端口规则——两处实现会产生两套状态源与互相覆盖的封禁名单。UI 上应引导用户「需要防爆破请安装 ssh-guard 插件」
+- **边界（历史口径，已被 0.3.0 覆盖）**：当时防爆破归 `kore-plugin-ssh-guard`；0.3.0 起 firewall 自持「失败计数 → 临时封禁」链路，`ssh-guard` 的 fail2ban 独立，勿对同一 IP 配重复策略
 
 ## 0.2.4 (2026-11-23)
 

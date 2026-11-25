@@ -27,6 +27,12 @@ func TestMethodCapabilitiesCoverBusinessVerbs(t *testing.T) {
 		"firewall.deleteRule": "system:admin",
 		"firewall.enable":     "system:admin",
 		"firewall.disable":    "system:admin",
+		"firewall.ipList":     "system:read",
+		"firewall.ipAllow":    "system:admin",
+		"firewall.ipDeny":     "system:admin",
+		"firewall.ipRemove":   "system:admin",
+		"firewall.recordFail": "system:admin",
+		"firewall.bruteSet":   "system:admin",
 		"firewall.config.get": "system:read",
 		"firewall.config.set": "system:admin",
 	}
