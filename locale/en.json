@@ -1,0 +1,7 @@
+{
+  "meta": {
+    "title": "kore-plugin-firewall",
+    "description": "Firewall/port management plugin: probes the real backend, reads rules and manages ufw port rules; executes only fixed-argv external commands (ufw/iptables), never through a shell, never reading or writing host config files, never enabling/disabling the firewall. Writes are protected by SSH, parameter allowlists and dry-run.",
+    "detail": "docs/DETAIL.en.md"
+  }
+}

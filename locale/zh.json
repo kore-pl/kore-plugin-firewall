@@ -1,0 +1,7 @@
+{
+  "meta": {
+    "title": "kore-plugin-firewall",
+    "description": "防火墙/端口管理插件：真实探测后端、读取规则、管理 ufw 端口规则；执行面只调用固定 argv 的外部命令（ufw/iptables），不经 shell、不读写宿主配置文件、不启用或禁用防火墙，写操作经过 SSH 保护、参数白名单与 dry-run。",
+    "detail": "docs/DETAIL.md"
+  }
+}

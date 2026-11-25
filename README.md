@@ -1,5 +1,6 @@
 # kore-plugin-firewall
 
+语言：[简体中文](docs/DETAIL.md) · [English](docs/DETAIL.en.md) · [Español](docs/DETAIL.es.md) · [Français](docs/DETAIL.fr.md) · [Deutsch](docs/DETAIL.de.md) · [Русский](docs/DETAIL.ru.md) · [Português](docs/DETAIL.pt.md)
 kore 的防火墙/端口管理插件：**真实探测后端、读取规则、管理 ufw 端口规则**。
 执行面只调用固定 argv 的外部命令（`ufw` / `iptables`），不经过 shell、不读写宿主
 配置文件、不启用或禁用防火墙。写操作统一经过 SSH 保护、参数白名单与 dry-run。
@@ -172,3 +173,7 @@ sha256 相同（声明值与实际包体允许 ≤2 字节偏差）。
 - **相关仓库**：[索引 kore-plugins](https://github.com/kore-pl/kore-plugins) · [协议文档](https://github.com/kore-pl/kore/blob/main/docs/PLUGIN-PROTOCOL.md) · [SDK 指南](https://github.com/kore-pl/kore/blob/main/docs/PLUGIN-SDK.md)
 
 <!-- oss:end -->
+
+## 支持本项目
+
+如果这个防火墙插件帮你把端口管得明明白白，欢迎给仓库点一个 ⭐ star——一点鼓励会让更多人发现 kore 的插件生态；想改进它就从 [CONTRIBUTING.md](CONTRIBUTING.md) 开始。

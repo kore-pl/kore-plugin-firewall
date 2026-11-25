@@ -1,0 +1,7 @@
+{
+  "meta": {
+    "title": "kore-plugin-firewall",
+    "description": "Firewall-/Portverwaltungs-Plugin: erkennt das echte Backend, liest Regeln und verwaltet ufw-Portregeln; führt nur externe Befehle mit festem argv aus (ufw/iptables), nie über eine Shell, ohne Host-Konfigurationsdateien zu lesen/schreiben, ohne die Firewall zu aktivieren/deaktivieren. Schreibzugriffe sind durch SSH, Parameter-Allowlists und dry-run geschützt.",
+    "detail": "docs/DETAIL.de.md"
+  }
+}
