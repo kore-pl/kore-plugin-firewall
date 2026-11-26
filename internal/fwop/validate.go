@@ -29,7 +29,7 @@ func normalizeProto(raw string) (string, *pluginapi.Error) {
 	case ProtoTCP, ProtoUDP:
 		return proto, nil
 	}
-	return "", invalid("proto 必须是 tcp/udp（缺省 tcp）")
+	return "", invalid("协议 proto 请填 tcp 或 udp，不填默认 tcp")
 }
 
 // normalizeFrom 归一来源：缺省 any；显式值只能是 any 或合法 IP / CIDR。

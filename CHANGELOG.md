@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.3.2 (2026-11-26)
+
+### 修复（文案 / 易用性）
+
+- **协议参数错误文案**：`proto` 校验的 `proto 必须是 tcp/udp（缺省 tcp）` 改为 `协议 proto 请填 tcp 或 udp，不填默认 tcp`，满足 G-33 A3「invalid 文案给可操作提示」；仅改错误提示字面量，不改校验逻辑与协议。
+- 版本 bump 原因：文案改动会改变二进制与 dist 包 sha；同一 `id@version` 只允许一个 sha（RELEASE §1），按 patch 递增。
+
 ## 0.3.1 (2026-11-26)
 
 ### 新增
